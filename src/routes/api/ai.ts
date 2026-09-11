@@ -67,27 +67,32 @@ export const Route = createFileRoute("/api/ai")({
         let buffer = "";
 
         const stream = new ReadableStream<Uint8Array>({
-          async pull(controller) {
-            const { done, value } = await reader.read();
-            if (done) {
-              controller.close();
-              return;
-            }
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-            for (const line of lines) {
-              if (!line.startsWith("data:")) continue;
-              const data = line.slice(5).trim();
-              if (!data || data === "[DONE]") continue;
-              try {
-                const event = JSON.parse(data) as { type?: string; delta?: string };
-                if (event.type === "response.output_text.delta" && event.delta) {
-                  controller.enqueue(encoder.encode(event.delta));
+          async start(controller) {
+            try {
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() ?? "";
+                for (const line of lines) {
+                  if (!line.startsWith("data:")) continue;
+                  const data = line.slice(5).trim();
+                  if (!data || data === "[DONE]") continue;
+                  try {
+                    const event = JSON.parse(data) as { type?: string; delta?: string };
+                    if (event.type === "response.output_text.delta" && event.delta) {
+                      controller.enqueue(encoder.encode(event.delta));
+                    }
+                  } catch {
+                    /* ignore keep-alive / partial frames */
+                  }
                 }
-              } catch {
-                /* ignore keep-alive / partial frames */
               }
+            } catch (error) {
+              console.error("AI stream error", error);
+            } finally {
+              controller.close();
             }
           },
           cancel() {
