@@ -10,7 +10,7 @@ export const Route = createFileRoute("/api/ai")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const body = (await request.json()) as Body;
+        const body = (await request.json().catch(() => null)) as Body | null;
         if (!body?.prompt) return new Response("Prompt is required", { status: 400 });
 
         const key = process.env["LOVABLE_API_KEY"];
